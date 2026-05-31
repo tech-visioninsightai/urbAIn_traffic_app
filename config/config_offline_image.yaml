@@ -1,0 +1,45 @@
+deployment:
+  backend: onnxruntime_cuda
+  precision: fp16
+  device_id: 0
+
+cameras:
+  - id: cam01
+    uri: ""
+    fps_target: 1
+    metadata:
+      location: offline_image
+      orientation: front
+
+models:
+  scene_classifier:
+    lighting_model_path: m15_scene_classifier/models/lighting_classifier.onnx
+    weather_model_path: m15_scene_classifier/models/weather_classifier.onnx
+    throttle_interval_sec: 1.0
+  object_detector:
+    model_path: m02_object_detector/models/yolov8m_traffic.onnx
+    confidence_thresholds:
+      vehicle: 0.50
+      person: 0.50
+      object: 0.60
+      unknown: 0.70
+  lpr_engine:
+    plate_localizer_model_path: m05_lpr_engine/training/exports/plate_localizer.onnx
+    paddle_use_gpu: true
+    paddle_use_angle_cls: false
+    enable_char_disambiguation: true
+    char_disambiguation_conf_threshold: 0.75
+    ocr_min_chars: 6
+
+pipeline:
+  deduplication:
+    enabled: false
+  tracking:
+    enabled: false
+  plate_aggregation:
+    enabled: false
+  frame_overlay:
+    enabled: true
+
+output:
+  queue_maxsize: 0

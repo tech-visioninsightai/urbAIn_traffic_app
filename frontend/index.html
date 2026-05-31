@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vision Insight AI - urbAIn - traffic</title>
+  <link rel="stylesheet" href="/styles/tokens.css" />
+  <link rel="stylesheet" href="/styles/app.css" />
+</head>
+<body>
+  <div class="grid-bg" aria-hidden="true"></div>
+  <div class="scan-lines" aria-hidden="true"></div>
+  <div class="app-shell">
+  <header class="app-header">
+    <div class="app-title">Vision Insight <span class="ai-accent">AI</span> · urb<span class="ai-accent">AI</span>n · traffic</div>
+    <div class="header-chips">
+      <span class="chip cyan" id="chip-pipeline">C15 · LPR</span>
+      <span class="chip" id="chip-mode">OFFLINE</span>
+      <span class="chip" id="chip-status"><span class="status-dot" id="status-dot"></span><span id="status-text">IDLE</span></span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="left-col">
+      <div class="pipeline-row">
+        <div class="mod active" id="mod-c15">
+          <div class="mod-id">PIPELINE · C15</div>
+          <div class="mod-name">LPR</div>
+        </div>
+        <div class="mod" title="Próximamente">
+          <div class="mod-id">PIPELINE · Cn</div>
+          <div class="mod-name">—</div>
+        </div>
+      </div>
+
+      <div class="module-img-wrap viewer-panel" id="video-wrap">
+        <span class="corner-mark tl"></span>
+        <span class="corner-mark tr"></span>
+        <span class="corner-mark bl"></span>
+        <span class="corner-mark br"></span>
+        <img id="live-stream" class="viewer-stream" alt="Live stream" />
+        <div class="viewer-status" id="viewer-status">
+          <div class="viewer-status-phase" id="status-phase">ESPERANDO</div>
+          <div class="viewer-status-message" id="status-message">Pulse Start para iniciar</div>
+          <div class="viewer-status-detail" id="status-detail"></div>
+          <ul class="viewer-status-log" id="status-log"></ul>
+        </div>
+      </div>
+
+      <div class="controls">
+        <span class="chip active" data-mode="online" id="btn-mode-online">Online</span>
+        <span class="chip" data-mode="offline_video" id="btn-mode-offline">Offline vídeo</span>
+        <span class="chip" data-mode="offline_image" id="btn-mode-photo">Offline foto</span>
+        <span class="chip cyan" id="btn-start">Start</span>
+        <span class="chip" id="btn-stop">Stop</span>
+        <label class="chip" for="file-input" id="chip-upload">Subir archivo</label>
+        <input type="file" id="file-input" class="file-input" accept="video/*,image/*" />
+      </div>
+
+      <div class="hud-bottom" id="hud-bottom"><span class="dot"></span>UPTIME — · EMITIDAS 0</div>
+    </section>
+
+    <aside class="right-col">
+      <div class="eyebrow">Detecciones LPR</div>
+      <div class="kpi-row">
+        <div class="kpi">
+          <div class="kpi-val" id="kpi-emitted">0</div>
+          <div class="kpi-label">Emitidas</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-val" id="kpi-uptime">—</div>
+          <div class="kpi-label">Uptime s</div>
+        </div>
+      </div>
+      <div class="det-table-wrap">
+        <table class="det-table">
+          <thead>
+            <tr>
+              <th>Hora</th>
+              <th>Matrícula</th>
+              <th>Conf</th>
+              <th>Cam</th>
+            </tr>
+          </thead>
+          <tbody id="det-body"></tbody>
+        </table>
+      </div>
+      <a href="#" class="output-link" id="output-link" style="display:none">Abrir carpeta de salida</a>
+    </aside>
+  </main>
+  </div>
+  <script src="/js/api.js"></script>
+  <script src="/js/live-view.js"></script>
+  <script src="/js/controls.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-multipart>=0.0.12
+pywebview>=5.3.2
+opencv-python>=4.8.0
+numpy>=1.24.0
+pyyaml>=6.0

@@ -1,0 +1,69 @@
+deployment:
+  backend: onnxruntime_cuda
+  precision: fp16
+  device_id: 0
+
+cameras:
+  - id: cam01
+    uri: ""
+    fps_target: 15
+    decoded_queue_maxsize: 8
+    country_hint: ES
+    metadata:
+      location: offline_file
+      orientation: front
+
+models:
+  scene_classifier:
+    lighting_model_path: m15_scene_classifier/models/lighting_classifier.onnx
+    weather_model_path: m15_scene_classifier/models/weather_classifier.onnx
+    throttle_interval_sec: 1.0
+  object_detector:
+    model_path: m02_object_detector/models/yolov8m_traffic.onnx
+    confidence_thresholds:
+      vehicle: 0.50
+      person: 0.50
+      object: 0.60
+      unknown: 0.70
+  lpr_engine:
+    plate_localizer_model_path: m05_lpr_engine/training/exports/plate_localizer.onnx
+    paddle_use_gpu: true
+    paddle_use_angle_cls: false
+    enable_char_disambiguation: true
+    char_disambiguation_conf_threshold: 0.75
+    enable_format_fix: false
+    ocr_min_chars: 6
+    plate_gate_min_locator_conf: 0.50
+    plate_gate_min_edge_density: 0.08
+    plate_gate_min_width_px: 50
+
+pipeline:
+  reference_video_duration_sec: null
+  cam_queue_maxsize: 5
+  m01_output_maxsize: 20
+  deduplication:
+    enabled: true
+    window_sec: 5.0
+  tracking:
+    enabled: true
+    min_hits_to_activate: 2
+    max_lost_frames: 30
+    pre_track_nms_iou: 0.5
+    max_observation_jump: 0.15
+  plate_aggregation:
+    enabled: true
+    min_observations: 2
+    min_fused_confidence: 0.65
+    homoglyph_vote_merge: true
+    post_fusion_disambiguation: false
+    snapshot_enabled: false
+  frame_overlay:
+    enabled: true
+    sync_time_source: file
+    capture_processed_frames: true
+    max_bbox_jump: 0.15
+    track_tail_sec: 0.5
+    max_lerp_progress: 1.0
+
+output:
+  queue_maxsize: 0
