@@ -1,0 +1,17 @@
+# GPU stack for urbAIn traffic app + C15 (install AFTER requirements.txt).
+#
+# Do NOT install paddlepaddle-gpu 2.x from PyPI — it downgrades protobuf and
+# breaks onnx / onnxruntime in this project.
+#
+# Windows (CUDA 12.x, RTX): use Paddle's cu129 wheel (see config_gpu.yaml).
+#
+#   pip uninstall -y paddlepaddle paddlepaddle-gpu paddleocr paddlex
+#   pip install "protobuf>=4.25.1,<6.34"
+#   pip install paddlepaddle-gpu==3.3.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu129/
+#   pip install paddleocr
+#
+# Verify:
+#   python -c "from urbAIn_testing_platform.gpu_dll_path import check_paddle_ocr_ready; print(check_paddle_ocr_ready())"
+
+onnxruntime-gpu>=1.17.0
+paddleocr>=3.6.0

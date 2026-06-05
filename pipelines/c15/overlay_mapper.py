@@ -1,12 +1,15 @@
 """Map C15 native outputs to traffic-app contracts."""
 from __future__ import annotations
 
-from c15_lpr_pipeline import C15FrameOverlay, C15LPRResult
+from typing import TYPE_CHECKING
 
 from urbAIn_traffic_app.core.pipeline_protocol import DetectionEvent, OverlayPayload
 
+if TYPE_CHECKING:
+    from c15_lpr_pipeline import C15FrameOverlay, C15LPRResult
 
-def overlay_from_c15(overlay: C15FrameOverlay) -> OverlayPayload:
+
+def overlay_from_c15(overlay: "C15FrameOverlay") -> OverlayPayload:
     return OverlayPayload(
         pipeline_id="c15",
         camera_id=overlay.camera_id,
@@ -22,7 +25,7 @@ def overlay_from_c15(overlay: C15FrameOverlay) -> OverlayPayload:
     )
 
 
-def detection_from_c15(result: C15LPRResult) -> DetectionEvent:
+def detection_from_c15(result: "C15LPRResult") -> DetectionEvent:
     return DetectionEvent(
         pipeline_id="c15",
         camera_id=result.camera_id,

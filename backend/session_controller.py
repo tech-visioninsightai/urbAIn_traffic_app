@@ -22,6 +22,7 @@ from urbAIn_traffic_app.core.pipeline_registry import registry
 from urbAIn_traffic_app.core.run_store import RunStore
 from urbAIn_traffic_app.core.visualization.sinks import WebStreamSink
 
+from urbAIn_traffic_app.backend.paddle_preflight import check_paddle_ocr_ready
 from urbAIn_traffic_app.pipelines.c15.adapter import C15PipelineAdapter
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,8 @@ def _session_uptime(state: SessionState) -> Optional[float]:
 
 
 class SessionController:
+    _start_lock = threading.Lock()
+
     def __init__(self, project_root: Path) -> None:
         self.project_root = project_root
         self.runs_root = project_root / "urbAIn_traffic_app" / "runs"
@@ -118,6 +121,22 @@ class SessionController:
         camera_uri: Optional[str] = None,
         file_path: Optional[str] = None,
     ) -> dict[str, Any]:
+        with self._start_lock:
+            return self._start_session_locked(
+                pipeline_id=pipeline_id,
+                mode=mode,
+                camera_uri=camera_uri,
+                file_path=file_path,
+            )
+
+    def _start_session_locked(
+        self,
+        *,
+        pipeline_id: str,
+        mode: str,
+        camera_uri: Optional[str] = None,
+        file_path: Optional[str] = None,
+    ) -> dict[str, Any]:
         if self.state.running:
             self.stop_session()
 
@@ -128,6 +147,11 @@ class SessionController:
             media = Path(file_path)
             if not media.is_file():
                 raise FileNotFoundError(f"Archivo no encontrado: {file_path}")
+
+        if pipeline_id == "c15":
+            paddle_ok, paddle_msg = check_paddle_ocr_ready()
+            if not paddle_ok:
+                raise ValueError(paddle_msg)
 
         connect_log: list[str] = []
         if run_mode == RunMode.ONLINE:

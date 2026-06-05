@@ -6,16 +6,12 @@ import logging
 import shutil
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
-from c15_lpr_pipeline import (
-    C15FrameOverlay,
-    C15LPRPipeline,
-    C15LPRResult,
-    C15PipelineOutput,
-    load_config,
+from urbAIn_testing_platform.annotated_video import (
+    build_annotated_video,
+    build_annotated_video_from_recorded,
 )
-from urbAIn_testing_platform.annotated_video import build_annotated_video_from_recorded
 from urbAIn_testing_platform.frame_recorder import FrameRecorder
 from urbAIn_testing_platform.visualization_bus import VisualizationBus
 from urbAIn_testing_platform.visualization_sinks import MP4Sink
@@ -28,9 +24,16 @@ from urbAIn_traffic_app.core.pipeline_protocol import (
 )
 from urbAIn_traffic_app.core.run_store import RunStore
 from urbAIn_traffic_app.core.visualization.sinks import WebStreamSink
+from urbAIn_traffic_app.pipelines.c15._runtime import c15
 from urbAIn_traffic_app.pipelines.c15.config_builder import build_config_for_source
 from urbAIn_traffic_app.pipelines.c15.overlay_mapper import detection_from_c15, overlay_from_c15
-from urbAIn_traffic_app.pipelines.c15.single_frame import process_offline_image
+from urbAIn_traffic_app.pipelines.c15.video_fps import (
+    probe_video_fps,
+    sync_annotated_duration,
+)
+
+if TYPE_CHECKING:
+    from c15_lpr_pipeline import C15LPRPipeline, C15PipelineOutput
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +45,8 @@ class C15PipelineAdapter:
     display_name = "C15 · LPR"
 
     def __init__(self) -> None:
-        self._pipeline: Optional[C15LPRPipeline] = None
-        self._output_queue: Optional[asyncio.Queue[C15PipelineOutput]] = None
+        self._pipeline: Optional["C15LPRPipeline"] = None
+        self._output_queue: Optional[asyncio.Queue["C15PipelineOutput"]] = None
         self._vis_bus: Optional[VisualizationBus] = None
         self._vis_sinks: list[Any] = []
         self._vis_frame_queue: Optional[asyncio.Queue] = None
@@ -57,6 +60,8 @@ class C15PipelineAdapter:
         self._project_root: Optional[Path] = None
         self._offline_stop_scheduled = False
         self._frame_recorder: Optional[FrameRecorder] = None
+        self._source_video_fps: Optional[float] = None
+        self._overlay_mux: Optional[dict[str, Any]] = None
 
     def build_config_path(self, ctx: RunContext) -> str:
         if self._project_root is None:
@@ -89,15 +94,32 @@ class C15PipelineAdapter:
             detail=str(ctx.source.file_path or ctx.source.camera_uri or ""),
         )
 
+        from urbAIn_testing_platform.gpu_dll_path import setup_gpu_dll_paths
+
+        setup_gpu_dll_paths()
+
         config_path = self.build_config_path(ctx)
-        config = load_config(config_path)
+        c15_mod = c15()
+        config = c15_mod.load_config(config_path)
         self._output_queue = asyncio.Queue(maxsize=config.output.queue_maxsize)
         self._frame_recorder = None
+        self._source_video_fps = None
+        if is_offline_video and ctx.source.file_path:
+            self._source_video_fps = probe_video_fps(ctx.source.file_path)
+        fo = config.pipeline.frame_overlay
+        self._overlay_mux = {
+            "hold_sec": float(fo.hold_sec),
+            "sync_lag_sec": fo.sync_lag_sec,
+            "sync_time_source": fo.sync_time_source,
+            "max_bbox_jump": float(fo.max_bbox_jump),
+            "track_tail_sec": float(fo.track_tail_sec),
+            "max_lerp_progress": float(fo.max_lerp_progress),
+        }
         if config.pipeline.frame_overlay.capture_processed_frames:
-            fps = float(config.cameras[0].fps_target or 15)
+            fps = self._source_video_fps or float(config.cameras[0].fps_target or 15)
             self._frame_recorder = FrameRecorder(ctx.output_dir, fps=fps)
 
-        self._pipeline = C15LPRPipeline(
+        self._pipeline = c15_mod.C15LPRPipeline(
             config,
             self._output_queue,
             frame_sink=self._frame_recorder,
@@ -264,6 +286,8 @@ class C15PipelineAdapter:
             mode="offline_image",
         )
         try:
+            from urbAIn_traffic_app.pipelines.c15.single_frame import process_offline_image
+
             out = await process_offline_image(
                 ctx,
                 project_root=self._project_root,
@@ -294,11 +318,12 @@ class C15PipelineAdapter:
         if self._pipeline is None:
             return False
         cam = next(iter(self._pipeline.get_metrics().values()), {})
-        if not cam.get("m01_playback_finished"):
-            return False
-        recv = int(cam.get("frames_received", 0))
-        proc = int(cam.get("frames_processed", 0))
-        return recv > 0 and proc >= recv
+        # Local files must not reconnect; a reconnect means a spurious loop.
+        if int(cam.get("m01_reconnect_count", 0)) > 0:
+            return True
+        if cam.get("m01_playback_finished"):
+            return True
+        return False
 
     async def _drain_frames(
         self,
@@ -352,8 +377,9 @@ class C15PipelineAdapter:
                 if ctx.on_metrics:
                     ctx.on_metrics(self._pipeline.get_metrics())
 
-    async def _handle_output(self, result: C15PipelineOutput, ctx: RunContext) -> None:
-        if isinstance(result, C15FrameOverlay):
+    async def _handle_output(self, result: "C15PipelineOutput", ctx: RunContext) -> None:
+        c15_mod = c15()
+        if isinstance(result, c15_mod.C15FrameOverlay):
             if self._store:
                 self._store.write_overlay({
                     "camera_id": result.camera_id,
@@ -380,7 +406,7 @@ class C15PipelineAdapter:
                 )
             return
 
-        if not isinstance(result, C15LPRResult):
+        if not isinstance(result, c15_mod.C15LPRResult):
             return
 
         event = detection_from_c15(result)
@@ -420,28 +446,61 @@ class C15PipelineAdapter:
             detail=str(out_dir),
         )
         annotated = out_dir / "annotated.mp4"
+        overlays = out_dir / "overlays.jsonl"
         mp4_sinks = [s for s in self._vis_sinks if isinstance(s, MP4Sink)]
         if mp4_sinks:
             live = mp4_sinks[0].path_for("cam01")
             if live.is_file():
                 shutil.copy2(live, annotated)
                 return
-        processed = out_dir / "processed_cam01.mp4"
-        overlays = out_dir / "overlays.jsonl"
-        if processed.is_file() and processed.stat().st_size < 1024:
-            logger.warning("processed video too small or empty: %s", processed)
+        if not overlays.is_file():
             return
-        if processed.is_file() and overlays.is_file():
+
+        source: Path | None = None
+        if (
+            self._ctx.mode == RunMode.OFFLINE_VIDEO
+            and self._ctx.source.file_path
+            and self._ctx.source.file_path.is_file()
+        ):
+            source = self._ctx.source.file_path
+
+        ok = False
+        mux = self._overlay_mux or {}
+        if source is not None:
+            try:
+                ok = build_annotated_video(
+                    source,
+                    overlays,
+                    annotated,
+                    hold_sec=mux.get("hold_sec", 0.25),
+                    sync_lag_sec=mux.get("sync_lag_sec"),
+                    sync_time_source=mux.get("sync_time_source", "file"),
+                    max_bbox_jump=mux.get("max_bbox_jump", 0.15),
+                    track_tail_sec=mux.get("track_tail_sec", 4.0),
+                    max_lerp_progress=mux.get("max_lerp_progress", 1.0),
+                )
+            except Exception:
+                logger.warning("annotated mux from source failed", exc_info=True)
+                ok = False
+
+        processed = out_dir / "processed_cam01.mp4"
+        if not ok and processed.is_file() and processed.stat().st_size >= 1024:
             try:
                 ok = build_annotated_video_from_recorded(
                     processed,
                     overlays,
                     annotated,
                 )
-                if not ok:
-                    logger.warning(
-                        "annotated mux failed; leaving %s as processed-only artefact",
-                        processed,
-                    )
             except Exception:
-                logger.warning("post mux failed", exc_info=True)
+                logger.warning("annotated mux from recorded failed", exc_info=True)
+                ok = False
+
+        if ok and source is not None:
+            sync_annotated_duration(annotated, source)
+        elif not ok:
+            if processed.is_file() and processed.stat().st_size < 1024:
+                logger.warning("processed video too small or empty: %s", processed)
+            else:
+                logger.warning(
+                    "annotated mux failed; check overlays.jsonl and source video",
+                )

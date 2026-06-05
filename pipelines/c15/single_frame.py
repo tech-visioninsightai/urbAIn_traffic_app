@@ -7,8 +7,9 @@ from pathlib import Path
 
 import cv2
 
-from c15_lpr_pipeline import C15FrameOverlay, C15LPRPipeline, C15LPRResult, load_config
 from m01_frame_preprocessor.types import Frame
+
+from urbAIn_traffic_app.pipelines.c15._runtime import c15
 
 from urbAIn_traffic_app.core.app_status import emit_status
 from urbAIn_traffic_app.core.pipeline_protocol import RunContext
@@ -68,9 +69,10 @@ async def process_offline_image(
         message="Cargando modelos C15…",
     )
 
-    config = load_config(str(config_path))
+    c15_mod = c15()
+    config = c15_mod.load_config(str(config_path))
     output_queue = __import__("asyncio").Queue(maxsize=0)
-    pipeline = C15LPRPipeline(config, output_queue)
+    pipeline = c15_mod.C15LPRPipeline(config, output_queue)
     frame = _build_frame_from_image(ctx.source.file_path)
 
     emit_status(
@@ -84,7 +86,7 @@ async def process_offline_image(
 
     overlays: list[tuple[str, dict]] = []
     for item in outputs:
-        if isinstance(item, C15FrameOverlay):
+        if isinstance(item, c15_mod.C15FrameOverlay):
             overlays.append(("c15", {
                 "vehicle_bbox": item.vehicle_bbox,
                 "plate_bbox": item.plate_bbox,
@@ -99,7 +101,7 @@ async def process_offline_image(
                 "plate_text": item.plate_text,
                 "plate_confidence": item.plate_confidence,
             })
-        elif isinstance(item, C15LPRResult):
+        elif isinstance(item, c15_mod.C15LPRResult):
             event = detection_from_c15(item)
             store.write_detection(
                 event,

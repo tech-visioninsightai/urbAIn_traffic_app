@@ -54,6 +54,11 @@ def build_config_for_source(
     if source.mode == RunMode.ONLINE and source.camera_uri:
         raw["cameras"][0]["uri"] = source.camera_uri
     elif source.mode == RunMode.OFFLINE_VIDEO and source.file_path:
-        raw["cameras"][0]["uri"] = str(source.file_path.resolve())
+        resolved = source.file_path.resolve()
+        raw["cameras"][0]["uri"] = str(resolved)
+        raw["cameras"][0]["single_pass"] = True
+        meta = raw["cameras"][0].get("metadata") or {}
+        meta.setdefault("location", "offline_file")
+        raw["cameras"][0]["metadata"] = meta
 
     return _write_temp_config(raw, run_output_dir, "runtime_config.yaml")
